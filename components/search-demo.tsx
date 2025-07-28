@@ -86,7 +86,7 @@ export default function SearchDemo() {
             placeholder="Search emails, senders, or content..."
             value={searchQuery}
             onChange={(e) => handleInputChange(e.target.value)}
-            className="pl-10"
+            className="pl-10 text-gray-900 placeholder:text-gray-500 bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-500"
           />
           {isLive && (
             <div className="absolute right-3 top-1/2 transform -translate-y-1/2">

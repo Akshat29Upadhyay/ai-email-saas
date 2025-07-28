@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useUser } from '@clerk/nextjs';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -94,12 +94,49 @@ interface Thread {
 export default function MailPage() {
   const { user, isLoaded } = useUser();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [selectedThread, setSelectedThread] = useState<Thread | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentFolder, setCurrentFolder] = useState<'inbox' | 'sent' | 'draft'>('inbox');
   const [threads, setThreads] = useState<Thread[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Update URL with current search and folder state
+  const updateURL = (folder: string, query: string) => {
+    const params = new URLSearchParams();
+    if (folder && folder !== 'inbox') params.set('folder', folder);
+    if (query) params.set('q', query);
+    
+    const newURL = params.toString() ? `?${params.toString()}` : '';
+    router.replace(`/mail${newURL}`, { scroll: false });
+  };
+
+  // Initialize from URL params
+  useEffect(() => {
+    if (isLoaded && user) {
+      const initialFolder = searchParams.get('folder') || 'inbox';
+      const initialQuery = searchParams.get('q') || '';
+      setCurrentFolder(initialFolder as 'inbox' | 'sent' | 'draft');
+      setSearchQuery(initialQuery);
+      fetchThreads(initialFolder, initialQuery);
+    }
+  }, [user, isLoaded, router, searchParams]);
+
+  // Handle URL parameter changes (browser back/forward)
+  useEffect(() => {
+    if (isLoaded && user) {
+      const urlFolder = searchParams.get('folder') || 'inbox';
+      const urlQuery = searchParams.get('q') || '';
+      
+      // Only update if different from current state
+      if (urlFolder !== currentFolder || urlQuery !== searchQuery) {
+        setCurrentFolder(urlFolder as 'inbox' | 'sent' | 'draft');
+        setSearchQuery(urlQuery);
+        fetchThreads(urlFolder, urlQuery);
+      }
+    }
+  }, [searchParams, isLoaded, user]);
 
   // Fetch threads from API
   const fetchThreads = async (folder?: string, query?: string) => {
@@ -157,6 +194,7 @@ export default function MailPage() {
       const searchThreads = data.results.map((result: any) => result.thread);
       setThreads(searchThreads);
       setSearchQuery(query);
+      updateURL(filters.folder || 'inbox', query); // Update URL with search results
     } catch (err) {
       console.error('Error in smart search:', err);
       setError('Smart search failed');
@@ -186,17 +224,6 @@ export default function MailPage() {
   };
 
   useEffect(() => {
-    if (isLoaded) {
-      if (!user) {
-        router.push('/sign-in');
-        return;
-      }
-      
-      fetchThreads(currentFolder);
-    }
-  }, [user, isLoaded, router, currentFolder]);
-
-  useEffect(() => {
     if (searchQuery) {
       const timeoutId = setTimeout(() => {
         fetchThreads(currentFolder, searchQuery);
@@ -215,7 +242,9 @@ export default function MailPage() {
   const handleFolderChange = (folder: 'inbox' | 'sent' | 'draft') => {
     setCurrentFolder(folder);
     setSelectedThread(null);
+    setSearchQuery(''); // Clear search when changing folders
     fetchThreads(folder);
+    updateURL(folder, ''); // Update URL and clear search
   };
 
   const formatDate = (date: Date) => {
@@ -267,25 +296,28 @@ export default function MailPage() {
             <Separator orientation="vertical" className="h-6" />
             <div className="flex items-center space-x-2">
               <Button 
-                variant={currentFolder === 'inbox' ? 'secondary' : 'ghost'} 
+                variant={currentFolder === 'inbox' ? 'default' : 'ghost'} 
                 size="sm"
                 onClick={() => handleFolderChange('inbox')}
+                className={currentFolder === 'inbox' ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'}
               >
                 <Inbox className="w-4 h-4 mr-2" />
                 Inbox
               </Button>
               <Button 
-                variant={currentFolder === 'sent' ? 'secondary' : 'ghost'} 
+                variant={currentFolder === 'sent' ? 'default' : 'ghost'} 
                 size="sm"
                 onClick={() => handleFolderChange('sent')}
+                className={currentFolder === 'sent' ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'}
               >
                 <Send className="w-4 h-4 mr-2" />
                 Sent
               </Button>
               <Button 
-                variant={currentFolder === 'draft' ? 'secondary' : 'ghost'} 
+                variant={currentFolder === 'draft' ? 'default' : 'ghost'} 
                 size="sm"
                 onClick={() => handleFolderChange('draft')}
+                className={currentFolder === 'draft' ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'}
               >
                 <FileText className="w-4 h-4 mr-2" />
                 Drafts
@@ -301,8 +333,10 @@ export default function MailPage() {
                 onClear={() => {
                   setSearchQuery('');
                   fetchThreads(currentFolder);
+                  updateURL(currentFolder, ''); // Clear URL parameters
                 }}
                 placeholder="Search emails with AI..."
+                initialQuery={searchQuery}
               />
             </div>
             
@@ -313,7 +347,7 @@ export default function MailPage() {
             
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm">
+                <Button variant="ghost" size="sm" className="text-gray-700 hover:text-gray-900 hover:bg-gray-100">
                   <Settings className="w-4 h-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -343,38 +377,50 @@ export default function MailPage() {
               <h3 className="text-sm font-medium text-gray-900 mb-2">Folders</h3>
               <div className="space-y-1">
                 <Button 
-                  variant={currentFolder === 'inbox' ? 'secondary' : 'ghost'} 
+                  variant={currentFolder === 'inbox' ? 'default' : 'ghost'} 
                   size="sm" 
-                  className="w-full justify-start"
+                  className={`w-full justify-start ${
+                    currentFolder === 'inbox' 
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                      : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
+                  }`}
                   onClick={() => handleFolderChange('inbox')}
                 >
                   <Inbox className="w-4 h-4 mr-2" />
                   Inbox
-                  <Badge variant="secondary" className="ml-auto">
+                  <Badge variant="secondary" className="ml-auto bg-gray-200 text-gray-800">
                     {threads.filter(t => t.inboxStatus).length}
                   </Badge>
                 </Button>
                 <Button 
-                  variant={currentFolder === 'sent' ? 'secondary' : 'ghost'} 
+                  variant={currentFolder === 'sent' ? 'default' : 'ghost'} 
                   size="sm" 
-                  className="w-full justify-start"
+                  className={`w-full justify-start ${
+                    currentFolder === 'sent' 
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                      : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
+                  }`}
                   onClick={() => handleFolderChange('sent')}
                 >
                   <Send className="w-4 h-4 mr-2" />
                   Sent
-                  <Badge variant="secondary" className="ml-auto">
+                  <Badge variant="secondary" className="ml-auto bg-gray-200 text-gray-800">
                     {threads.filter(t => t.sentStatus).length}
                   </Badge>
                 </Button>
                 <Button 
-                  variant={currentFolder === 'draft' ? 'secondary' : 'ghost'} 
+                  variant={currentFolder === 'draft' ? 'default' : 'ghost'} 
                   size="sm" 
-                  className="w-full justify-start"
+                  className={`w-full justify-start ${
+                    currentFolder === 'draft' 
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                      : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
+                  }`}
                   onClick={() => handleFolderChange('draft')}
                 >
                   <FileText className="w-4 h-4 mr-2" />
                   Drafts
-                  <Badge variant="secondary" className="ml-auto">
+                  <Badge variant="secondary" className="ml-auto bg-gray-200 text-gray-800">
                     {threads.filter(t => t.draftStatus).length}
                   </Badge>
                 </Button>
@@ -386,15 +432,15 @@ export default function MailPage() {
             <div>
               <h3 className="text-sm font-medium text-gray-900 mb-2">AI Features</h3>
               <div className="space-y-1">
-                <Button variant="ghost" size="sm" className="w-full justify-start text-green-600">
+                <Button variant="ghost" size="sm" className="w-full justify-start text-green-700 hover:text-green-800 hover:bg-green-50">
                   <Search className="w-4 h-4 mr-2" />
                   Smart Search
                 </Button>
-                <Button variant="ghost" size="sm" className="w-full justify-start text-blue-600">
+                <Button variant="ghost" size="sm" className="w-full justify-start text-blue-700 hover:text-blue-800 hover:bg-blue-50">
                   <FileText className="w-4 h-4 mr-2" />
                   AI Summaries
                 </Button>
-                <Button variant="ghost" size="sm" className="w-full justify-start text-purple-600">
+                <Button variant="ghost" size="sm" className="w-full justify-start text-purple-700 hover:text-purple-800 hover:bg-purple-50">
                   <Reply className="w-4 h-4 mr-2" />
                   Smart Replies
                 </Button>
@@ -414,17 +460,17 @@ export default function MailPage() {
                     {searchQuery ? 'Search Results' : currentFolder.charAt(0).toUpperCase() + currentFolder.slice(1)}
                   </h2>
                   {searchQuery && (
-                    <Badge variant="secondary" className="text-xs">
+                    <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-800 border border-blue-200">
                       <Sparkles className="w-3 h-3 mr-1" />
-                      {searchQuery}
+                      AI Search
                     </Badge>
                   )}
                 </div>
                 <div className="flex items-center space-x-2">
-                  <Button variant="ghost" size="sm">
+                  <Button variant="ghost" size="sm" className="text-gray-700 hover:text-gray-900 hover:bg-gray-100">
                     <Filter className="w-4 h-4" />
                   </Button>
-                  <Button variant="ghost" size="sm">
+                  <Button variant="ghost" size="sm" className="text-gray-700 hover:text-gray-900 hover:bg-gray-100">
                     <MoreHorizontal className="w-4 h-4" />
                   </Button>
                 </div>
@@ -440,8 +486,9 @@ export default function MailPage() {
                     onClick={() => {
                       setSearchQuery('');
                       fetchThreads(currentFolder);
+                      updateURL(currentFolder, ''); // Clear URL parameters
                     }}
-                    className="text-xs"
+                    className="text-xs text-gray-700 hover:text-gray-900 hover:bg-gray-100"
                   >
                     <X className="w-3 h-3 mr-1" />
                     Clear Search
@@ -503,7 +550,7 @@ export default function MailPage() {
                               <Paperclip className="w-3 h-3 text-gray-400" />
                             )}
                             {latestEmail.sensitivity !== 'normal' && (
-                              <Badge variant="outline" className="text-xs">
+                              <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200">
                                 {latestEmail.sensitivity}
                               </Badge>
                             )}
@@ -557,15 +604,15 @@ export default function MailPage() {
                     </div>
                     
                     <div className="flex items-center space-x-2">
-                      <Button variant="ghost" size="sm">
+                      <Button variant="ghost" size="sm" className="text-gray-700 hover:text-gray-900 hover:bg-gray-100">
                         <Reply className="w-4 h-4" />
                       </Button>
-                      <Button variant="ghost" size="sm">
+                      <Button variant="ghost" size="sm" className="text-gray-700 hover:text-gray-900 hover:bg-gray-100">
                         <Forward className="w-4 h-4" />
                       </Button>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
+                          <Button variant="ghost" size="sm" className="text-gray-700 hover:text-gray-900 hover:bg-gray-100">
                             <MoreHorizontal className="w-4 h-4" />
                           </Button>
                         </DropdownMenuTrigger>
@@ -629,17 +676,17 @@ export default function MailPage() {
                 {/* AI Features Bar */}
                 <div className="p-4 border-t border-gray-200 bg-gray-50">
                   <div className="flex items-center space-x-4">
-                    <Button variant="outline" size="sm" className="text-blue-600">
+                    <Button variant="outline" size="sm" className="text-blue-700 border-blue-300 hover:bg-blue-50">
                       <FileText className="w-4 h-4 mr-2" />
                       AI Summary
                     </Button>
-                    <Button variant="outline" size="sm" className="text-green-600">
+                    <Button variant="outline" size="sm" className="text-green-700 border-green-300 hover:bg-green-50">
                       <Reply className="w-4 h-4 mr-2" />
                       Smart Reply
                     </Button>
-                    <Button variant="outline" size="sm" className="text-purple-600">
+                    <Button variant="outline" size="sm" className="text-purple-700 border-purple-300 hover:bg-purple-50">
                       <Search className="w-4 h-4 mr-2" />
-                      Related Emails
+                      Analyze
                     </Button>
                   </div>
                 </div>
