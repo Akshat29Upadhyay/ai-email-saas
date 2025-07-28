@@ -28,9 +28,13 @@ import {
   Calendar,
   Paperclip,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  Sparkles,
+  X
 } from 'lucide-react';
 import SeedDataButton from '@/components/seed-data-button';
+import SmartSearch from '@/components/smart-search';
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -123,6 +127,47 @@ export default function MailPage() {
     }
   };
 
+  // Smart search function
+  const handleSmartSearch = async (query: string, filters: any) => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const params = new URLSearchParams();
+      params.append('q', query);
+      params.append('type', 'search');
+      
+      // Add filters to params
+      if (filters.folder) params.append('folder', filters.folder);
+      if (filters.sender) params.append('sender', filters.sender);
+      if (filters.hasAttachments !== undefined) params.append('hasAttachments', filters.hasAttachments.toString());
+      if (filters.sensitivity) params.append('sensitivity', filters.sensitivity);
+      if (filters.dateRange?.start) params.append('startDate', filters.dateRange.start.toISOString());
+      if (filters.dateRange?.end) params.append('endDate', filters.dateRange.end.toISOString());
+      
+      const response = await fetch(`/api/mail/search?${params.toString()}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to perform smart search');
+      }
+      
+      const data = await response.json();
+      
+      // Convert search results back to thread format for compatibility
+      const searchThreads = data.results.map((result: any) => result.thread);
+      setThreads(searchThreads);
+      setSearchQuery(query);
+    } catch (err) {
+      console.error('Error in smart search:', err);
+      setError('Smart search failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Simple search function
+
+
   // Fetch specific thread
   const fetchThread = async (threadId: string) => {
     try {
@@ -167,13 +212,10 @@ export default function MailPage() {
     setSelectedThread(thread);
   };
 
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
-  };
-
   const handleFolderChange = (folder: 'inbox' | 'sent' | 'draft') => {
     setCurrentFolder(folder);
     setSelectedThread(null);
+    fetchThreads(folder);
   };
 
   const formatDate = (date: Date) => {
@@ -252,14 +294,15 @@ export default function MailPage() {
           </div>
           
           <div className="flex items-center space-x-4">
-            {/* Search */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <Input
-                placeholder="Search emails..."
-                value={searchQuery}
-                onChange={(e) => handleSearch(e.target.value)}
-                className="pl-10 w-80"
+            {/* Smart Search */}
+            <div className="w-80">
+              <SmartSearch
+                onSearch={handleSmartSearch}
+                onClear={() => {
+                  setSearchQuery('');
+                  fetchThreads(currentFolder);
+                }}
+                placeholder="Search emails with AI..."
               />
             </div>
             
@@ -366,9 +409,17 @@ export default function MailPage() {
           <div className="w-1/2 border-r border-gray-200">
             <div className="p-4 border-b border-gray-200">
               <div className="flex items-center justify-between mb-2">
-                <h2 className="text-lg font-semibold text-gray-900">
-                  {currentFolder.charAt(0).toUpperCase() + currentFolder.slice(1)}
-                </h2>
+                <div className="flex items-center space-x-2">
+                  <h2 className="text-lg font-semibold text-gray-900">
+                    {searchQuery ? 'Search Results' : currentFolder.charAt(0).toUpperCase() + currentFolder.slice(1)}
+                  </h2>
+                  {searchQuery && (
+                    <Badge variant="secondary" className="text-xs">
+                      <Sparkles className="w-3 h-3 mr-1" />
+                      {searchQuery}
+                    </Badge>
+                  )}
+                </div>
                 <div className="flex items-center space-x-2">
                   <Button variant="ghost" size="sm">
                     <Filter className="w-4 h-4" />
@@ -378,9 +429,25 @@ export default function MailPage() {
                   </Button>
                 </div>
               </div>
-              <p className="text-sm text-gray-600">
-                {threads.length} conversations
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-gray-600">
+                  {threads.length} {searchQuery ? 'results' : 'conversations'}
+                </p>
+                {searchQuery && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => {
+                      setSearchQuery('');
+                      fetchThreads(currentFolder);
+                    }}
+                    className="text-xs"
+                  >
+                    <X className="w-3 h-3 mr-1" />
+                    Clear Search
+                  </Button>
+                )}
+              </div>
             </div>
             
             {error && (
