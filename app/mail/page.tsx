@@ -25,12 +25,12 @@ import {
   Filter,
   Settings,
   Plus,
-  ChevronDown,
   Calendar,
   Paperclip,
-  Eye,
-  EyeOff
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
+import SeedDataButton from '@/components/seed-data-button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,22 +40,40 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+// Types based on Prisma schema
+interface EmailAddress {
+  id: string;
+  name: string | null;
+  address: string;
+  raw: string | null;
+}
+
+interface EmailAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  inline: boolean;
+  contentId: string | null;
+  content: string | null;
+  contentLocation: string | null;
+}
+
 interface Email {
   id: string;
   subject: string;
-  bodySnippet: string;
+  bodySnippet: string | null;
+  body: string | null;
   sentAt: Date;
-  from: {
-    name: string;
-    address: string;
-  };
-  to: Array<{
-    name: string;
-    address: string;
-  }>;
+  receivedAt: Date;
   hasAttachments: boolean;
   emailLabel: 'inbox' | 'sent' | 'draft';
   sensitivity: 'normal' | 'private' | 'personal' | 'confidential';
+  from: EmailAddress;
+  to: EmailAddress[];
+  cc: EmailAddress[];
+  bcc: EmailAddress[];
+  attachments: EmailAttachment[];
 }
 
 interface Thread {
@@ -63,10 +81,10 @@ interface Thread {
   subject: string;
   lastMessageDate: Date;
   participantIds: string[];
-  emails: Email[];
   inboxStatus: boolean;
   draftStatus: boolean;
   sentStatus: boolean;
+  emails: Email[];
 }
 
 export default function MailPage() {
@@ -74,9 +92,53 @@ export default function MailPage() {
   const router = useRouter();
   const [selectedThread, setSelectedThread] = useState<Thread | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [currentFolder, setCurrentFolder] = useState('inbox');
+  const [currentFolder, setCurrentFolder] = useState<'inbox' | 'sent' | 'draft'>('inbox');
   const [threads, setThreads] = useState<Thread[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch threads from API
+  const fetchThreads = async (folder?: string, query?: string) => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const params = new URLSearchParams();
+      if (folder) params.append('folder', folder);
+      if (query) params.append('q', query);
+      
+      const response = await fetch(`/api/mail/threads?${params.toString()}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch threads');
+      }
+      
+      const data = await response.json();
+      setThreads(data.threads || []);
+    } catch (err) {
+      console.error('Error fetching threads:', err);
+      setError('Failed to load emails');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch specific thread
+  const fetchThread = async (threadId: string) => {
+    try {
+      const response = await fetch(`/api/mail/threads/${threadId}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch thread');
+      }
+      
+      const data = await response.json();
+      setSelectedThread(data.thread);
+    } catch (err) {
+      console.error('Error fetching thread:', err);
+      setError('Failed to load email details');
+    }
+  };
 
   useEffect(() => {
     if (isLoaded) {
@@ -85,110 +147,61 @@ export default function MailPage() {
         return;
       }
       
-      // Mock data for demonstration
-      const mockThreads: Thread[] = [
-        {
-          id: '1',
-          subject: 'Project Update - Q4 Goals',
-          lastMessageDate: new Date('2024-01-15T10:30:00'),
-          participantIds: ['user1', 'user2'],
-          inboxStatus: true,
-          draftStatus: false,
-          sentStatus: false,
-          emails: [
-            {
-              id: '1',
-              subject: 'Project Update - Q4 Goals',
-              bodySnippet: 'Hi team, I wanted to share our progress on the Q4 goals...',
-              sentAt: new Date('2024-01-15T10:30:00'),
-              from: { name: 'John Smith', address: 'john@company.com' },
-              to: [{ name: 'Team', address: 'team@company.com' }],
-              hasAttachments: true,
-              emailLabel: 'inbox',
-              sensitivity: 'normal'
-            }
-          ]
-        },
-        {
-          id: '2',
-          subject: 'Meeting Tomorrow at 2 PM',
-          lastMessageDate: new Date('2024-01-15T09:15:00'),
-          participantIds: ['user1', 'user3'],
-          inboxStatus: true,
-          draftStatus: false,
-          sentStatus: false,
-          emails: [
-            {
-              id: '2',
-              subject: 'Meeting Tomorrow at 2 PM',
-              bodySnippet: 'Just a reminder about our scheduled meeting...',
-              sentAt: new Date('2024-01-15T09:15:00'),
-              from: { name: 'Sarah Johnson', address: 'sarah@company.com' },
-              to: [{ name: 'Akshat', address: 'akshat@company.com' }],
-              hasAttachments: false,
-              emailLabel: 'inbox',
-              sensitivity: 'normal'
-            }
-          ]
-        },
-        {
-          id: '3',
-          subject: 'AI Email RAG Implementation',
-          lastMessageDate: new Date('2024-01-15T08:45:00'),
-          participantIds: ['user1', 'user4'],
-          inboxStatus: true,
-          draftStatus: false,
-          sentStatus: false,
-          emails: [
-            {
-              id: '3',
-              subject: 'AI Email RAG Implementation',
-              bodySnippet: 'Great news! We\'ve successfully implemented the AI-driven email RAG system...',
-              sentAt: new Date('2024-01-15T08:45:00'),
-              from: { name: 'Tech Team', address: 'tech@company.com' },
-              to: [{ name: 'Development Team', address: 'dev@company.com' }],
-              hasAttachments: true,
-              emailLabel: 'inbox',
-              sensitivity: 'confidential'
-            }
-          ]
-        }
-      ];
-      
-      setThreads(mockThreads);
-      setLoading(false);
+      fetchThreads(currentFolder);
     }
-  }, [user, isLoaded, router]);
+  }, [user, isLoaded, router, currentFolder]);
+
+  useEffect(() => {
+    if (searchQuery) {
+      const timeoutId = setTimeout(() => {
+        fetchThreads(currentFolder, searchQuery);
+      }, 300);
+      
+      return () => clearTimeout(timeoutId);
+    } else {
+      fetchThreads(currentFolder);
+    }
+  }, [searchQuery, currentFolder]);
+
+  const handleThreadSelect = (thread: Thread) => {
+    setSelectedThread(thread);
+  };
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
-    // Implement full-text search functionality here
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    // Keyboard shortcuts
-    if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      // Focus search
-      document.getElementById('search-input')?.focus();
+  const handleFolderChange = (folder: 'inbox' | 'sent' | 'draft') => {
+    setCurrentFolder(folder);
+    setSelectedThread(null);
+  };
+
+  const formatDate = (date: Date) => {
+    const now = new Date();
+    const emailDate = new Date(date);
+    const diffInHours = (now.getTime() - emailDate.getTime()) / (1000 * 60 * 60);
+    
+    if (diffInHours < 24) {
+      return emailDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } else if (diffInHours < 168) { // 7 days
+      return emailDate.toLocaleDateString([], { weekday: 'short' });
+    } else {
+      return emailDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
     }
-    if (e.key === 'r' && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      // Quick reply
-      console.log('Quick reply');
+  };
+
+  const getInitials = (name: string | null, email: string) => {
+    if (name) {
+      return name.split(' ').map(n => n[0]).join('').toUpperCase();
     }
-    if (e.key === 'j' && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      // Jump to inbox
-      setCurrentFolder('inbox');
-    }
+    return email[0].toUpperCase();
   };
 
   if (!isLoaded || loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+          <Loader2 className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto" />
           <p className="mt-2 text-gray-600">Loading your inbox...</p>
         </div>
       </div>
@@ -200,7 +213,7 @@ export default function MailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50" onKeyDown={handleKeyPress} tabIndex={0}>
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
@@ -211,15 +224,27 @@ export default function MailPage() {
             </div>
             <Separator orientation="vertical" className="h-6" />
             <div className="flex items-center space-x-2">
-              <Button variant="ghost" size="sm" className="text-gray-600">
+              <Button 
+                variant={currentFolder === 'inbox' ? 'secondary' : 'ghost'} 
+                size="sm"
+                onClick={() => handleFolderChange('inbox')}
+              >
                 <Inbox className="w-4 h-4 mr-2" />
                 Inbox
               </Button>
-              <Button variant="ghost" size="sm" className="text-gray-600">
+              <Button 
+                variant={currentFolder === 'sent' ? 'secondary' : 'ghost'} 
+                size="sm"
+                onClick={() => handleFolderChange('sent')}
+              >
                 <Send className="w-4 h-4 mr-2" />
                 Sent
               </Button>
-              <Button variant="ghost" size="sm" className="text-gray-600">
+              <Button 
+                variant={currentFolder === 'draft' ? 'secondary' : 'ghost'} 
+                size="sm"
+                onClick={() => handleFolderChange('draft')}
+              >
                 <FileText className="w-4 h-4 mr-2" />
                 Drafts
               </Button>
@@ -231,8 +256,7 @@ export default function MailPage() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <Input
-                id="search-input"
-                placeholder="Search emails (⌘K)"
+                placeholder="Search emails..."
                 value={searchQuery}
                 onChange={(e) => handleSearch(e.target.value)}
                 className="pl-10 w-80"
@@ -253,7 +277,6 @@ export default function MailPage() {
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>Settings</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>Keyboard Shortcuts</DropdownMenuItem>
                 <DropdownMenuItem>Preferences</DropdownMenuItem>
                 <DropdownMenuItem>Help</DropdownMenuItem>
               </DropdownMenuContent>
@@ -280,31 +303,37 @@ export default function MailPage() {
                   variant={currentFolder === 'inbox' ? 'secondary' : 'ghost'} 
                   size="sm" 
                   className="w-full justify-start"
-                  onClick={() => setCurrentFolder('inbox')}
+                  onClick={() => handleFolderChange('inbox')}
                 >
                   <Inbox className="w-4 h-4 mr-2" />
                   Inbox
-                  <Badge variant="secondary" className="ml-auto">3</Badge>
+                  <Badge variant="secondary" className="ml-auto">
+                    {threads.filter(t => t.inboxStatus).length}
+                  </Badge>
                 </Button>
-                <Button variant="ghost" size="sm" className="w-full justify-start">
-                  <Star className="w-4 h-4 mr-2" />
-                  Starred
-                </Button>
-                <Button variant="ghost" size="sm" className="w-full justify-start">
+                <Button 
+                  variant={currentFolder === 'sent' ? 'secondary' : 'ghost'} 
+                  size="sm" 
+                  className="w-full justify-start"
+                  onClick={() => handleFolderChange('sent')}
+                >
                   <Send className="w-4 h-4 mr-2" />
                   Sent
+                  <Badge variant="secondary" className="ml-auto">
+                    {threads.filter(t => t.sentStatus).length}
+                  </Badge>
                 </Button>
-                <Button variant="ghost" size="sm" className="w-full justify-start">
+                <Button 
+                  variant={currentFolder === 'draft' ? 'secondary' : 'ghost'} 
+                  size="sm" 
+                  className="w-full justify-start"
+                  onClick={() => handleFolderChange('draft')}
+                >
                   <FileText className="w-4 h-4 mr-2" />
                   Drafts
-                </Button>
-                <Button variant="ghost" size="sm" className="w-full justify-start">
-                  <Archive className="w-4 h-4 mr-2" />
-                  Archive
-                </Button>
-                <Button variant="ghost" size="sm" className="w-full justify-start">
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Trash
+                  <Badge variant="secondary" className="ml-auto">
+                    {threads.filter(t => t.draftStatus).length}
+                  </Badge>
                 </Button>
               </div>
             </div>
@@ -354,60 +383,84 @@ export default function MailPage() {
               </p>
             </div>
             
+            {error && (
+              <div className="p-4 flex items-center space-x-2 text-red-600">
+                <AlertCircle className="w-4 h-4" />
+                <span className="text-sm">{error}</span>
+              </div>
+            )}
+            
             <ScrollArea className="h-[calc(100vh-160px)]">
               <div className="space-y-1">
-                {threads.map((thread) => (
-                  <div
-                    key={thread.id}
-                    className={`p-4 hover:bg-gray-50 cursor-pointer border-l-4 ${
-                      selectedThread?.id === thread.id 
-                        ? 'border-blue-500 bg-blue-50' 
-                        : 'border-transparent'
-                    }`}
-                    onClick={() => setSelectedThread(thread)}
-                  >
-                    <div className="flex items-start space-x-3">
-                      <Avatar className="w-8 h-8 mt-1">
-                        <AvatarFallback>
-                          {thread.emails[0]?.from.name.split(' ').map(n => n[0]).join('')}
-                        </AvatarFallback>
-                      </Avatar>
-                      
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <h3 className="text-sm font-medium text-gray-900 truncate">
-                            {thread.emails[0]?.from.name}
-                          </h3>
-                          <span className="text-xs text-gray-500">
-                            {thread.lastMessageDate.toLocaleTimeString([], { 
-                              hour: '2-digit', 
-                              minute: '2-digit' 
-                            })}
-                          </span>
-                        </div>
+                {threads.map((thread) => {
+                  const latestEmail = thread.emails[0];
+                  if (!latestEmail) return null;
+                  
+                  return (
+                    <div
+                      key={thread.id}
+                      className={`p-4 hover:bg-gray-50 cursor-pointer border-l-4 ${
+                        selectedThread?.id === thread.id 
+                          ? 'border-blue-500 bg-blue-50' 
+                          : 'border-transparent'
+                      }`}
+                      onClick={() => handleThreadSelect(thread)}
+                    >
+                      <div className="flex items-start space-x-3">
+                        <Avatar className="w-8 h-8 mt-1">
+                          <AvatarFallback>
+                            {getInitials(latestEmail.from.name, latestEmail.from.address)}
+                          </AvatarFallback>
+                        </Avatar>
                         
-                        <p className="text-sm font-medium text-gray-900 truncate">
-                          {thread.subject}
-                        </p>
-                        
-                        <p className="text-sm text-gray-600 truncate">
-                          {thread.emails[0]?.bodySnippet}
-                        </p>
-                        
-                        <div className="flex items-center space-x-2 mt-2">
-                          {thread.emails[0]?.hasAttachments && (
-                            <Paperclip className="w-3 h-3 text-gray-400" />
-                          )}
-                          {thread.emails[0]?.sensitivity !== 'normal' && (
-                            <Badge variant="outline" className="text-xs">
-                              {thread.emails[0]?.sensitivity}
-                            </Badge>
-                          )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-sm font-medium text-gray-900 truncate">
+                              {latestEmail.from.name || latestEmail.from.address}
+                            </h3>
+                            <span className="text-xs text-gray-500">
+                              {formatDate(latestEmail.sentAt)}
+                            </span>
+                          </div>
+                          
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            {thread.subject}
+                          </p>
+                          
+                          <p className="text-sm text-gray-600 truncate">
+                            {latestEmail.bodySnippet || 'No preview available'}
+                          </p>
+                          
+                          <div className="flex items-center space-x-2 mt-2">
+                            {latestEmail.hasAttachments && (
+                              <Paperclip className="w-3 h-3 text-gray-400" />
+                            )}
+                            {latestEmail.sensitivity !== 'normal' && (
+                              <Badge variant="outline" className="text-xs">
+                                {latestEmail.sensitivity}
+                              </Badge>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
+                  );
+                })}
+                
+                {threads.length === 0 && !loading && !error && (
+                  <div className="p-8 text-center">
+                    <Mail className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No emails found</h3>
+                    <p className="text-gray-600 mb-6">
+                      {searchQuery ? 'No emails match your search.' : 'Your inbox is empty.'}
+                    </p>
+                    {!searchQuery && (
+                      <div className="max-w-md mx-auto">
+                        <SeedDataButton />
+                      </div>
+                    )}
                   </div>
-                ))}
+                )}
               </div>
             </ScrollArea>
           </div>
@@ -423,11 +476,17 @@ export default function MailPage() {
                       <h2 className="text-xl font-semibold text-gray-900 mb-2">
                         {selectedThread.subject}
                       </h2>
-                      <div className="flex items-center space-x-4 text-sm text-gray-600">
-                        <span>From: {selectedThread.emails[0]?.from.name} &lt;{selectedThread.emails[0]?.from.address}&gt;</span>
-                        <span>To: {selectedThread.emails[0]?.to.map(t => t.name).join(', ')}</span>
-                        <span>{selectedThread.lastMessageDate.toLocaleDateString()}</span>
-                      </div>
+                      {selectedThread.emails[0] && (
+                        <div className="flex items-center space-x-4 text-sm text-gray-600">
+                          <span>
+                            From: {selectedThread.emails[0].from.name || selectedThread.emails[0].from.address}
+                          </span>
+                          <span>
+                            To: {selectedThread.emails[0].to.map(t => t.name || t.address).join(', ')}
+                          </span>
+                          <span>{formatDate(selectedThread.emails[0].sentAt)}</span>
+                        </div>
+                      )}
                     </div>
                     
                     <div className="flex items-center space-x-2">
@@ -457,7 +516,7 @@ export default function MailPage() {
                   {selectedThread.emails[0]?.hasAttachments && (
                     <div className="flex items-center space-x-2 text-sm text-gray-600">
                       <Paperclip className="w-4 h-4" />
-                      <span>1 attachment</span>
+                      <span>{selectedThread.emails[0].attachments.length} attachment(s)</span>
                     </div>
                   )}
                 </div>
@@ -465,15 +524,38 @@ export default function MailPage() {
                 {/* Email Content */}
                 <ScrollArea className="flex-1 p-6">
                   <div className="prose max-w-none">
-                    <p className="text-gray-900 leading-relaxed">
-                      {selectedThread.emails[0]?.bodySnippet}
-                    </p>
-                    <p className="text-gray-900 leading-relaxed mt-4">
-                      Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
-                    </p>
-                    <p className="text-gray-900 leading-relaxed mt-4">
-                      Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
-                    </p>
+                    {selectedThread.emails.map((email, index) => (
+                      <div key={email.id} className="mb-8">
+                        <div className="flex items-center space-x-2 mb-4 text-sm text-gray-600">
+                          <span>{email.from.name || email.from.address}</span>
+                          <span>•</span>
+                          <span>{formatDate(email.sentAt)}</span>
+                        </div>
+                        
+                        <div className="text-gray-900 leading-relaxed">
+                          {email.body ? (
+                            <div dangerouslySetInnerHTML={{ __html: email.body }} />
+                          ) : (
+                            <p>{email.bodySnippet || 'No content available'}</p>
+                          )}
+                        </div>
+                        
+                        {email.attachments.length > 0 && (
+                          <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                            <h4 className="text-sm font-medium text-gray-900 mb-2">Attachments</h4>
+                            <div className="space-y-2">
+                              {email.attachments.map((attachment) => (
+                                <div key={attachment.id} className="flex items-center space-x-2 text-sm">
+                                  <Paperclip className="w-4 h-4 text-gray-400" />
+                                  <span>{attachment.name}</span>
+                                  <span className="text-gray-500">({attachment.size} bytes)</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </ScrollArea>
 
@@ -506,29 +588,6 @@ export default function MailPage() {
             )}
           </div>
         </main>
-      </div>
-
-      {/* Keyboard Shortcuts Help */}
-      <div className="fixed bottom-4 right-4">
-        <Card className="w-64">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Keyboard Shortcuts</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1 text-xs">
-            <div className="flex justify-between">
-              <span>⌘K</span>
-              <span>Search</span>
-            </div>
-            <div className="flex justify-between">
-              <span>⌘R</span>
-              <span>Quick Reply</span>
-            </div>
-            <div className="flex justify-between">
-              <span>⌘J</span>
-              <span>Jump to Inbox</span>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );
