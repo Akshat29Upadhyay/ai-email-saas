@@ -30,11 +30,14 @@ import {
   Loader2,
   AlertCircle,
   Sparkles,
-  X
+  X,
+  Zap,
+  ZapCircle
 } from 'lucide-react';
 import SeedDataButton from '@/components/seed-data-button';
 import SmartSearch from '@/components/smart-search';
 import EmailChatbot from '@/components/email-chatbot';
+import { UserHeader } from '@/components/user-header';
 
 import {
   DropdownMenu,
@@ -287,217 +290,132 @@ export default function MailPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <Mail className="w-6 h-6 text-blue-600" />
-              <h1 className="text-xl font-semibold text-gray-900">EmailSaaS</h1>
-            </div>
-            <Separator orientation="vertical" className="h-6" />
-            <div className="flex items-center space-x-2">
+      <UserHeader />
+
+      <div className="flex h-[calc(100vh-64px)] pt-16">
+        {/* Sidebar */}
+        <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
+          {/* Folder Navigation */}
+          <div className="p-4 border-b border-gray-200">
+            <div className="space-y-2">
               <Button 
                 variant={currentFolder === 'inbox' ? 'default' : 'ghost'} 
-                size="sm"
+                className={`w-full justify-start ${currentFolder === 'inbox' ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'}`}
                 onClick={() => handleFolderChange('inbox')}
-                className={currentFolder === 'inbox' ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'}
               >
-                <Inbox className="w-4 h-4 mr-2" />
+                <Inbox className="w-4 h-4 mr-3" />
                 Inbox
+                <Badge className="ml-auto bg-gray-200 text-gray-800">
+                  {threads.filter(t => t.emails.some(e => e.emailLabel === 'inbox')).length}
+                </Badge>
               </Button>
               <Button 
                 variant={currentFolder === 'sent' ? 'default' : 'ghost'} 
-                size="sm"
+                className={`w-full justify-start ${currentFolder === 'sent' ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'}`}
                 onClick={() => handleFolderChange('sent')}
-                className={currentFolder === 'sent' ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'}
               >
-                <Send className="w-4 h-4 mr-2" />
+                <Send className="w-4 h-4 mr-3" />
                 Sent
+                <Badge className="ml-auto bg-gray-200 text-gray-800">
+                  {threads.filter(t => t.emails.some(e => e.emailLabel === 'sent')).length}
+                </Badge>
               </Button>
               <Button 
                 variant={currentFolder === 'draft' ? 'default' : 'ghost'} 
-                size="sm"
+                className={`w-full justify-start ${currentFolder === 'draft' ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'}`}
                 onClick={() => handleFolderChange('draft')}
-                className={currentFolder === 'draft' ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'}
               >
-                <FileText className="w-4 h-4 mr-2" />
+                <FileText className="w-4 h-4 mr-3" />
                 Drafts
+                <Badge className="ml-auto bg-gray-200 text-gray-800">
+                  {threads.filter(t => t.emails.some(e => e.emailLabel === 'draft')).length}
+                </Badge>
               </Button>
             </div>
           </div>
-          
-          <div className="flex items-center space-x-4">
-            {/* Smart Search */}
-            <div className="w-80">
-              <SmartSearch
-                onSearch={handleSmartSearch}
-                onClear={() => {
-                  setSearchQuery('');
-                  fetchThreads(currentFolder);
-                  updateURL(currentFolder, ''); // Clear URL parameters
-                }}
-                placeholder="Search emails"
-                initialQuery={searchQuery}
-              />
+
+          {/* AI Features */}
+          <div className="p-4 border-b border-gray-200">
+            <h3 className="text-sm font-medium text-gray-900 mb-3">AI Features</h3>
+            <div className="space-y-2">
+              <Button variant="ghost" size="sm" className="w-full justify-start text-green-700 hover:bg-green-50">
+                <Sparkles className="w-4 h-4 mr-3" />
+                Smart Compose
+              </Button>
+              <Button variant="ghost" size="sm" className="w-full justify-start text-blue-700 hover:bg-blue-50">
+                <Zap className="w-4 h-4 mr-3" />
+                Auto Reply
+              </Button>
+              <Button variant="ghost" size="sm" className="w-full justify-start text-purple-700 hover:bg-purple-50">
+                <Mail className="w-4 h-4 mr-3" />
+                Email Summary
+              </Button>
             </div>
-            
-            <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
-              <Plus className="w-4 h-4 mr-2" />
-              Compose
-            </Button>
-            
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="text-gray-700 hover:text-gray-900 hover:bg-gray-100">
-                  <Settings className="w-4 h-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Settings</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem>Preferences</DropdownMenuItem>
-                <DropdownMenuItem>Help</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            
-            <Avatar className="w-8 h-8">
-              <AvatarImage src={user.imageUrl} />
-              <AvatarFallback>
-                {user.firstName?.[0]}{user.lastName?.[0]}
-              </AvatarFallback>
-            </Avatar>
+          </div>
+
+          {/* Database Status */}
+          <div className="p-4">
+            <SeedDataButton />
           </div>
         </div>
-      </header>
-
-      <div className="flex h-[calc(100vh-80px)]">
-        {/* Sidebar */}
-        <aside className="w-64 bg-white border-r border-gray-200 p-4">
-          <div className="space-y-4">
-            <div>
-              <h3 className="text-sm font-medium text-gray-900 mb-2">Folders</h3>
-              <div className="space-y-1">
-                <Button 
-                  variant={currentFolder === 'inbox' ? 'default' : 'ghost'} 
-                  size="sm" 
-                  className={`w-full justify-start ${
-                    currentFolder === 'inbox' 
-                      ? 'bg-blue-600 hover:bg-blue-700 text-white' 
-                      : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
-                  }`}
-                  onClick={() => handleFolderChange('inbox')}
-                >
-                  <Inbox className="w-4 h-4 mr-2" />
-                  Inbox
-                  <Badge variant="secondary" className="ml-auto bg-gray-200 text-gray-800">
-                    {threads.filter(t => t.inboxStatus).length}
-                  </Badge>
-                </Button>
-                <Button 
-                  variant={currentFolder === 'sent' ? 'default' : 'ghost'} 
-                  size="sm" 
-                  className={`w-full justify-start ${
-                    currentFolder === 'sent' 
-                      ? 'bg-blue-600 hover:bg-blue-700 text-white' 
-                      : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
-                  }`}
-                  onClick={() => handleFolderChange('sent')}
-                >
-                  <Send className="w-4 h-4 mr-2" />
-                  Sent
-                  <Badge variant="secondary" className="ml-auto bg-gray-200 text-gray-800">
-                    {threads.filter(t => t.sentStatus).length}
-                  </Badge>
-                </Button>
-                <Button 
-                  variant={currentFolder === 'draft' ? 'default' : 'ghost'} 
-                  size="sm" 
-                  className={`w-full justify-start ${
-                    currentFolder === 'draft' 
-                      ? 'bg-blue-600 hover:bg-blue-700 text-white' 
-                      : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
-                  }`}
-                  onClick={() => handleFolderChange('draft')}
-                >
-                  <FileText className="w-4 h-4 mr-2" />
-                  Drafts
-                  <Badge variant="secondary" className="ml-auto bg-gray-200 text-gray-800">
-                    {threads.filter(t => t.draftStatus).length}
-                  </Badge>
-                </Button>
-              </div>
-            </div>
-            
-            <Separator />
-            
-            <div>
-              <h3 className="text-sm font-medium text-gray-900 mb-2">AI Features</h3>
-              <div className="space-y-1">
-                <Button variant="ghost" size="sm" className="w-full justify-start text-green-700 hover:text-green-800 hover:bg-green-50">
-                  <Search className="w-4 h-4 mr-2" />
-                  Smart Search
-                </Button>
-                <Button variant="ghost" size="sm" className="w-full justify-start text-blue-700 hover:text-blue-800 hover:bg-blue-50">
-                  <FileText className="w-4 h-4 mr-2" />
-                  AI Summaries
-                </Button>
-                <Button variant="ghost" size="sm" className="w-full justify-start text-purple-700 hover:text-purple-800 hover:bg-purple-50">
-                  <Reply className="w-4 h-4 mr-2" />
-                  Smart Replies
-                </Button>
-              </div>
-            </div>
-          </div>
-        </aside>
 
         {/* Main Content */}
-        <main className="flex-1 flex">
-          {/* Email List */}
-          <div className="w-1/2 border-r border-gray-200">
-            <div className="p-4 border-b border-gray-200">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center space-x-2">
-                  <h2 className="text-lg font-semibold text-gray-900">
-                    {searchQuery ? 'Search Results' : currentFolder.charAt(0).toUpperCase() + currentFolder.slice(1)}
-                  </h2>
-                  {searchQuery && (
-                    <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-800 border border-blue-200">
-                      <Sparkles className="w-3 h-3 mr-1" />
+        <div className="flex-1 flex flex-col">
+          {/* Search and Actions Bar */}
+          <div className="bg-white border-b border-gray-200 p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <h2 className="text-lg font-semibold text-gray-900 capitalize">{currentFolder}</h2>
+                {searchQuery && (
+                  <div className="flex items-center space-x-2">
+                    <Badge className="bg-blue-100 text-blue-800 border border-blue-200">
                       AI Search
                     </Badge>
-                  )}
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Button variant="ghost" size="sm" className="text-gray-700 hover:text-gray-900 hover:bg-gray-100">
-                    <Filter className="w-4 h-4" />
-                  </Button>
-                  <Button variant="ghost" size="sm" className="text-gray-700 hover:text-gray-900 hover:bg-gray-100">
-                    <MoreHorizontal className="w-4 h-4" />
-                  </Button>
-                </div>
+                    <span className="text-sm text-gray-600">
+                      {threads.length} results
+                    </span>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => {
+                        setSearchQuery('');
+                        fetchThreads(currentFolder);
+                        updateURL(currentFolder, ''); // Clear URL parameters
+                      }}
+                      className="text-xs text-gray-700 hover:text-gray-900 hover:bg-gray-100"
+                    >
+                      <X className="w-3 h-3 mr-1" />
+                      Clear Search
+                    </Button>
+                  </div>
+                )}
               </div>
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-600">
-                  {threads.length} {searchQuery ? 'results' : 'conversations'}
-                </p>
-                {searchQuery && (
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={() => {
+              
+              <div className="flex items-center space-x-4">
+                {/* Smart Search */}
+                <div className="w-80">
+                  <SmartSearch
+                    onSearch={handleSmartSearch}
+                    onClear={() => {
                       setSearchQuery('');
                       fetchThreads(currentFolder);
                       updateURL(currentFolder, ''); // Clear URL parameters
                     }}
-                    className="text-xs text-gray-700 hover:text-gray-900 hover:bg-gray-100"
-                  >
-                    <X className="w-3 h-3 mr-1" />
-                    Clear Search
-                  </Button>
-                )}
+                    placeholder="Search emails with AI..."
+                    initialQuery={searchQuery}
+                  />
+                </div>
+                
+                <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Compose
+                </Button>
               </div>
             </div>
-            
+          </div>
+
+          {/* Email List */}
+          <div className="w-1/2 border-r border-gray-200">
             {error && (
               <div className="p-4 flex items-center space-x-2 text-red-600">
                 <AlertCircle className="w-4 h-4" />
@@ -702,7 +620,7 @@ export default function MailPage() {
               </div>
             )}
           </div>
-        </main>
+        </div>
       </div>
       
       {/* Email Chatbot */}
