@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import SeedDataButton from '@/components/seed-data-button';
 import SmartSearch from '@/components/smart-search';
+import EmailChatbot from '@/components/email-chatbot';
 
 import {
   DropdownMenu,
@@ -335,7 +336,7 @@ export default function MailPage() {
                   fetchThreads(currentFolder);
                   updateURL(currentFolder, ''); // Clear URL parameters
                 }}
-                placeholder="Search emails with AI..."
+                placeholder="Search emails"
                 initialQuery={searchQuery}
               />
             </div>
@@ -703,6 +704,9 @@ export default function MailPage() {
           </div>
         </main>
       </div>
+      
+      {/* Email Chatbot */}
+      <EmailChatbot />
     </div>
   );
 }
