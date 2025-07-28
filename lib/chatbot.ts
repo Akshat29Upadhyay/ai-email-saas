@@ -208,11 +208,14 @@ When answering questions:
   }
 
   // Get response using Google Gemini
-  private async getGeminiResponse(userMessage: string): Promise<string> {
+  private async getGeminiResponse(userMessage: string, clerkUserId: string): Promise<string> {
     try {
-      // Prepare context for Gemini with more detailed email information
-      const emailContext = this.emailContext.length > 0 
-        ? `\n\nEmail Context (${this.emailContext.length} emails):\n${this.emailContext.slice(0, 15).map((email, index) => 
+      // Load all user emails for comprehensive context
+      const allEmails = await this.loadAllUserEmails(clerkUserId, 50);
+      
+      // Prepare comprehensive email context for Gemini
+      const emailContext = allEmails.length > 0 
+        ? `\n\nComplete Email Database (${allEmails.length} emails):\n${allEmails.map((email, index) => 
             `Email ${index + 1}:
 Subject: ${email.subject}
 From: ${email.sender}
@@ -223,17 +226,31 @@ Thread ID: ${email.threadId}
           ).join('\n\n')}`
         : '';
 
-      const prompt = `You are an AI email assistant. You have access to the user's email data and can help them find and understand information from their emails.
+      const systemPrompt = `You are an AI email assistant with access to the user's complete email database. You can see all their emails and help them find and understand information from their emails.
 
 ${emailContext}
 
+Your capabilities:
+- Search through all emails to find relevant information
+- Summarize email threads and conversations
+- Answer questions about email content, senders, dates, etc.
+- Help with email organization and management
+- Provide insights about email patterns and communication
+
+When answering questions:
+1. Always reference specific emails when providing information
+2. Include relevant details like sender names, dates, and subjects
+3. Be helpful and conversational
+4. If you don't have enough information, ask for clarification
+5. Respect email privacy and only discuss the user's own emails
+
 User Question: ${userMessage}
 
-Please provide a helpful response based on the email context above. If you don't have enough information, ask for clarification. Always reference specific emails when providing information.`;
+Please provide a helpful response based on the complete email database above. Always reference specific emails when providing information.`;
 
       const response = await genAI.models.generateContent({
         model: "gemini-2.0-flash-exp",
-        contents: prompt,
+        contents: systemPrompt,
       });
 
       const text = response.text || 'Sorry, I couldn\'t generate a response.';
@@ -244,18 +261,70 @@ Please provide a helpful response based on the email context above. If you don't
     }
   }
 
+  // Load all user emails for comprehensive context
+  private async loadAllUserEmails(clerkUserId: string, limit: number = 50): Promise<EmailContext[]> {
+    try {
+      const accounts = await prisma.account.findMany({
+        where: { clerkUserId },
+        include: {
+          threads: {
+            include: {
+              emails: {
+                include: {
+                  from: true,
+                  to: true,
+                },
+                orderBy: {
+                  sentAt: 'desc',
+                },
+              },
+            },
+            orderBy: {
+              lastMessageDate: 'desc',
+            },
+            take: limit,
+          },
+        },
+      });
+
+      const allEmails: EmailContext[] = [];
+      
+      for (const account of accounts) {
+        for (const thread of account.threads) {
+          for (const email of thread.emails) {
+            allEmails.push({
+              subject: email.subject,
+              sender: email.from.name || email.from.address,
+              content: email.bodySnippet || email.body || 'No content available',
+              date: email.sentAt.toISOString(),
+              threadId: thread.id,
+            });
+          }
+        }
+      }
+
+      return allEmails;
+    } catch (error) {
+      console.error('Error loading all user emails:', error);
+      return [];
+    }
+  }
+
   // Main method to get response with fallback
   async getResponse(userMessage: string, clerkUserId: string): Promise<{ response: string; provider: string; emailCount: number }> {
     try {
-      // First, try to load or search for relevant emails
-      const relevantEmails = await this.searchEmails(userMessage, clerkUserId, 10);
-      if (relevantEmails.length > 0) {
-        this.emailContext = relevantEmails;
-        this.updateSystemMessage();
-      }
-
+      // For OpenAI, we can use the existing search-based approach
+      // For Gemini, we'll load all emails in the getGeminiResponse method
+      
       // Try OpenAI first
       try {
+        // Load or search for relevant emails for OpenAI
+        const relevantEmails = await this.searchEmails(userMessage, clerkUserId, 10);
+        if (relevantEmails.length > 0) {
+          this.emailContext = relevantEmails;
+          this.updateSystemMessage();
+        }
+        
         const response = await this.getOpenAIResponse(userMessage);
         return {
           response,
@@ -265,13 +334,13 @@ Please provide a helpful response based on the email context above. If you don't
       } catch (openaiError) {
         console.log('OpenAI failed, trying Gemini...');
         
-        // Fallback to Gemini
+        // Fallback to Gemini with comprehensive email context
         try {
-          const response = await this.getGeminiResponse(userMessage);
+          const response = await this.getGeminiResponse(userMessage, clerkUserId);
           return {
             response,
             provider: 'Google Gemini',
-            emailCount: this.emailContext.length
+            emailCount: 50 // Gemini gets access to up to 50 emails
           };
         } catch (geminiError) {
           throw new Error('Both AI services are currently unavailable');
